@@ -288,7 +288,7 @@ class DownloadManager(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self, username="Guest"):
         super().__init__()
-        self.setWindowTitle("Sysra Browser Lite 4.0")
+        self.setWindowTitle("Sysra Browser Lite 5.0")
         self.setGeometry(50, 50, 1200, 800)
 
         splitter = QSplitter(Qt.Horizontal)
