@@ -95,6 +95,9 @@ All notes stored locally
 
 Camera & microphone permissions are controlled by the WebEngine
 
+<img width="1188" height="799" alt="image" src="https://github.com/user-attachments/assets/570e4698-0d36-4d7b-9d33-3294e65636bd" />
+
+
 🧠 Philosophy
 Sysra Browser Lite is built for:
 
