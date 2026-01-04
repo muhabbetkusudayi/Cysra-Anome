@@ -1,53 +1,63 @@
-# -*- mode: python ; coding: utf-8 -*-
-
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 import os
 
-# myapps klasöründeki HER ŞEYİ al
-myapps_datas = [('myapps', 'myapps')]
+block_cipher = None
 
-a = Analysis(
-    ['sysrabrowser.py'],
-    pathex=[],
-    binaries=[],
-    datas=[
-        ('sysra_home.html', '.'),
-        ('users.json', '.'),
-        ('icon.png', '.'),
-        *myapps_datas  # 🔥 myapps komple burada
-    ],
-    hiddenimports=[
-        'PyQt5.QtWebEngineWidgets',
-        'PyQt5.QtWebEngineCore'
-    ],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
-    noarchive=False,
-    optimize=0,
+project_dir = os.getcwd()
+
+hiddenimports = (
+    collect_submodules("PyQt5") +
+    collect_submodules("PyQt5.QtWebEngineWidgets") +
+    collect_submodules("PyQt5.QtWebEngineCore") +
+    collect_submodules("PyQt5.QtWebChannel")
 )
 
-pyz = PYZ(a.pure)
+datas = []
+
+for root, dirs, files in os.walk(project_dir):
+    for file in files:
+        full_path = os.path.join(root, file)
+        rel_path = os.path.relpath(root, project_dir)
+        datas.append((full_path, rel_path))
+
+datas += collect_data_files("PyQt5", include_py_files=False)
+datas += collect_data_files("PyQt5.QtWebEngineCore")
+
+a = Analysis(
+    ["sysrabrowser.py"],
+    pathex=[project_dir],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
-    name='sysrabrowser',
+    exclude_binaries=True,
+    name="SysraBrowser",
     debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=['icon.ico'],
+    console=False
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    name="SysraBrowser"
 )
