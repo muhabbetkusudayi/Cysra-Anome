@@ -6,7 +6,8 @@ It combines a clean browsing experience with built-in tools and a powerful plugi
 Fast. Minimal. Hackable.
 
 
-<img width="1188" height="799" alt="image" src="https://github.com/user-attachments/assets/a8f49a96-5407-4ee5-91e1-31347a07eb01" />
+<img width="1200" height="799" alt="image" src="https://github.com/user-attachments/assets/aa60a39d-d88e-4f2d-8db0-8f0d9579e620" />
+
 
 ---
 
