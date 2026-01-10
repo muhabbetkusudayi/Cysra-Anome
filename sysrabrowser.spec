@@ -47,9 +47,11 @@ exe = EXE(
     exclude_binaries=True,
     name="SysraBrowser",
     debug=False,
+    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False
+    console=False,
+    icon='icon.ico'  
 )
 
 coll = COLLECT(
@@ -59,5 +61,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    name="SysraBrowser"
+    name="SysraBrowserLite"
 )
