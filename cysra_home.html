@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cysra Anome 6.0 – Search</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --bg: #272727;
+      --text-color: #ffffff;
+      --text-muted: #5f6368;
+      --input-bg: #f1f3f4;
+      --button-bg: #f8f9fa;
+      --button-hover: #e8eaed;
+      --border-color: #dfe1e5;
+      --button-primary-bg: #4285f4;
+      --button-primary-hover: #3367d6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text-color);
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+    .container {
+      text-align: center;
+      width: 600px;
+      max-width: 90%;
+    }
+    .logo img {
+      height: 300px;
+      margin-bottom: 40px;
+    }
+    .search-form {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .search-input {
+      flex: 1;
+      padding: 12px 20px;
+      font-size: 18px;
+      border-radius: 24px;
+      border: 1px solid var(--border-color);
+      background: var(--input-bg);
+      outline: none;
+    }
+    .search-input:focus {
+      border-color: var(--button-primary-bg);
+      box-shadow: 0 1px 6px rgba(32,33,36,.28);
+      background: #000000;
+    }
+    .search-button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 24px;
+      border: 1px solid var(--border-color);
+      background: var(--button-bg);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .search-button:hover {
+      background: var(--button-hover);
+    }
+    .primary-button {
+      background: var(--button-primary-bg);
+      color: #fff;
+      border: none;
+    }
+    .primary-button:hover {
+      background: var(--button-primary-hover);
+    }
+    .extra-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .footer {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <img src="icon.png" alt="Sysra Logo">
+    </div>
+    
+    <form class="search-form" action="https://duckduckgo.com/" method="get">
+      <input type="text" name="q" class="search-input" placeholder="Search in privacy..." autocomplete="off">
+      <button type="submit" class="search-button primary-button">Search</button>
+    </form>
+    
+    <div class="extra-buttons">
+      <button onclick="location.href='https://example.com/' + encodeURIComponent(document.querySelector('.search-input').value)" class="search-button">IDK</button>
+      <button onclick="location.href='https://sysraapp.netlify.app/' + encodeURIComponent(document.querySelector('.search-input').value)" class="search-button">Our Site</button>
+    </div>
+  
+    <div class="footer">
+      Sysra Corporation © 2026
+    </div>
+  </div>
+
+  <script>
+    // Press Enter to search
+    document.querySelector('.search-input').addEventListener('keydown', function(e) {
+      if(e.key === 'Enter') {
+        e.preventDefault();
+        this.form.submit();
+      }
+    });
+  </script>
+</body>
+</html>
