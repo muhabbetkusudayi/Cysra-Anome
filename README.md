@@ -1,4 +1,4 @@
-# 🚀 Sysra Browser Lite v6.0 Pro
+# 🚀 Cysra Anome v6.0 Pro
 ### 🎂 4th Year Anniversary Edition (2022 - 2026)
 
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue?style=for-the-badge&logo=python)
@@ -7,7 +7,7 @@
 ![Sysra](https://img.shields.io/badge/welove-sysra-green)
 
 
-**Sysra Browser Lite** celebrates its **4th Anniversary** on January 11, 2026! Over four years of evolution, we have refined the core engine to deliver a browsing experience that is fast, modular, and completely customizable.
+**Cysra Anome** celebrates its **4th Anniversary** on January 11, 2026! Over four years of evolution, we have refined the core engine to deliver a browsing experience that is fast, modular, and completely customizable.
 
 ---
 
@@ -56,7 +56,9 @@ January 4, 2025: Changed name to Sysra Browser Lite.
 
 January 11, 2026: 4th Anniversary official release of v6.0.
 
+January 12, 2026: Changed name to Cysra Anome.
+
 ## License
 This project is open-source and provided for personal use and community development.
 
-Sysra Browser Lite - Be creative and private.
+Cysra Anome - Be creative and private.
