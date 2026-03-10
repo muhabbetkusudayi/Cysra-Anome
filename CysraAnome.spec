@@ -24,7 +24,7 @@ datas += collect_data_files("PyQt5", include_py_files=False)
 datas += collect_data_files("PyQt5.QtWebEngineCore")
 
 a = Analysis(
-    ["sysrabrowser.py"],
+    ["cysrabrowser.py"],
     pathex=[project_dir],
     binaries=[],
     datas=datas,
@@ -45,7 +45,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="SysraBrowser",
+    name="CysraAnome",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -61,5 +61,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    name="SysraBrowserLite"
+    name="CysraAnome"
 )

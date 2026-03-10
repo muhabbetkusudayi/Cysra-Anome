@@ -6,6 +6,34 @@ import importlib.util
 import traceback
 import gc
 from datetime import datetime
+import os
+from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
+
+
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+    "--disable-gpu "
+    "--disable-software-rasterizer "
+    "--disable-extensions "
+    "--disable-sync "
+    "--disable-translate "
+    "--disable-background-networking "
+    "--disable-background-timer-throttling "
+    "--disable-backgrounding-occluded-windows "
+    "--disable-default-apps "
+    "--disable-features=MediaRouter "
+    "--metrics-recording-only "
+    "--no-first-run "
+    "--process-per-site "
+    "--renderer-process-limit=2 "
+    "--disk-cache-size=5242880 "
+    "--media-cache-size=5242880 "
+    "--disable-autofill "
+    "--disable-spell-checking "
+)
+
+class DNTInterceptor(QWebEngineUrlRequestInterceptor):
+    def interceptRequest(self, info):
+        info.setHttpHeader(b"DNT", b"1")
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout,
@@ -143,8 +171,8 @@ QTabBar::tab {
     max-width: 200px;
     font-size: 12px;
     font-weight: 500;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
     border: none;
     margin-right: 2px;
     margin-top: 4px;
@@ -185,7 +213,7 @@ QFrame#card {
 QFrame#urlFrame {
     background: """ + p("url_bg") + """;
     border: 1.5px solid transparent;
-    border-radius: 22px;
+    border-radius: 18px;
     min-height: 36px;
     max-height: 36px;
 }
@@ -194,7 +222,7 @@ QPushButton {
     background: transparent;
     color: """ + p("text2") + """;
     border: none;
-    border-radius: 8px;
+    border-radius: 15px;
     padding: 6px 14px;
     font-size: 13px;
     font-weight: 500;
@@ -205,35 +233,56 @@ QPushButton:hover {
 }
 QPushButton:pressed { background: """ + p("border") + """; }
 
-QPushButton#navBtn {
-    border-radius: 18px;
-    padding: 0;
+QToolButton#navBtn {
+    background: transparent;
+    border: none;
+    border-radius: 17px;
     min-width: 34px;
-    min-height: 34px;
     max-width: 34px;
+    min-height: 34px;
     max-height: 34px;
-    font-size: 16px;
-    color: """ + p("text2") + """;
+    padding: 0px;
+    margin: 0 2px;
 }
-QPushButton#navBtn:hover {
+
+QToolButton#navBtn:hover {
     background: """ + p("btn_hover") + """;
-    color: """ + p("text") + """;
 }
-QPushButton#navBtn:disabled { color: """ + p("border") + """; background: transparent; }
+
+QToolButton#navBtn:pressed {
+    background: """ + p("border") + """;
+    transform: scale(0.95);
+}
+
+QToolButton#navBtn:disabled {
+    opacity: 0.3; 
+}
 
 QPushButton#iconBtn {
     min-width: 40px;
     max-width: 40px;
     min-height: 40px;
     max-height: 40px;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 0;
-    font-size: 17px;
+    background: transparent;
     color: """ + p("text3") + """;
+    qproperty-iconSize: 22px;
 }
+
 QPushButton#iconBtn:hover {
     background: """ + p("btn_hover") + """;
-    color: """ + p("text") + """;
+}
+
+
+QPushButton#iconBtn[active="true"] {
+    background: """ + p("tag_bg") + """;
+    color: """ + p("accent") + """;
+    border-radius: 10px;
+}
+
+QPushButton#iconBtn[active="true"]:hover {
+    background: """ + p("tag_bg") + """;
 }
 
 QPushButton#accentBtn {
@@ -271,7 +320,7 @@ QLineEdit {
     background: """ + p("input_bg") + """;
     color: """ + p("text") + """;
     border: 1px solid """ + p("input_bdr") + """;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 7px 12px;
     font-size: 13px;
     selection-background-color: """ + p("selection") + """;
@@ -291,7 +340,7 @@ QTextEdit {
     background: """ + p("input_bg") + """;
     color: """ + p("text") + """;
     border: 1px solid """ + p("input_bdr") + """;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 8px;
     font-size: 13px;
     selection-background-color: """ + p("selection") + """;
@@ -612,21 +661,11 @@ class AddressBar(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 0, 8, 0)
         layout.setSpacing(4)
-
-        self.star_btn = QPushButton("☆")
-        self.star_btn.setObjectName("starBtn")
-        self.star_btn.setToolTip("Add to Favorites (Ctrl+D)")
-        self.star_btn.setCursor(Qt.PointingHandCursor)
-        self.star_btn.clicked.connect(self.favoriteToggled)
-        layout.addWidget(self.star_btn)
-
+        
+        
         self.sec_label = QLabel()
         self.sec_label.setFixedWidth(36)
         self.sec_label.setAlignment(Qt.AlignCenter)
-        self.sec_label.setStyleSheet(
-            "font-size:10px;font-weight:700;background:transparent;padding:0 2px;"
-            "color:" + p("text3") + ";"
-        )
         layout.addWidget(self.sec_label)
 
         self.url_input = QLineEdit()
@@ -635,26 +674,27 @@ class AddressBar(QFrame):
         self.url_input.returnPressed.connect(
             lambda: self.navigateRequested.emit(self.url_input.text().strip())
         )
+        layout.addWidget(self.url_input, 1)
 
-        original_focus_in  = self.url_input.focusInEvent
-        original_focus_out = self.url_input.focusOutEvent
 
+        self.star_btn = QPushButton("")
+        self.star_btn.setObjectName("")
+
+        
         def on_focus_in(ev):
-            self.setStyleSheet(
-                "QFrame#urlFrame{background:" + p("url_focus_bg") + ";"
-                "border:1.5px solid " + p("url_focus_bdr") + ";border-radius:22px;}"
-            )
+            self.setProperty("focused", True)
+            self.style().unpolish(self)
+            self.style().polish(self)
             self.url_input.selectAll()
-            original_focus_in(ev)
+            QLineEdit.focusInEvent(self.url_input, ev)
 
         def on_focus_out(ev):
-            self.setStyleSheet(
-                "QFrame#urlFrame{background:" + p("url_bg") + ";"
-                "border:1.5px solid transparent;border-radius:22px;}"
-            )
-            original_focus_out(ev)
+            self.setProperty("focused", False)
+            self.style().unpolish(self)
+            self.style().polish(self)
+            QLineEdit.focusOutEvent(self.url_input, ev)
 
-        self.url_input.focusInEvent  = on_focus_in
+        self.url_input.focusInEvent = on_focus_in
         self.url_input.focusOutEvent = on_focus_out
         layout.addWidget(self.url_input, 1)
 
@@ -720,19 +760,33 @@ class IconBar(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 10, 6, 10)
         layout.setSpacing(4)
-        layout.setAlignment(Qt.AlignTop)
+        layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        self.setFixedWidth(52)
 
+        
         for key, symbol, tooltip in self.ITEMS:
-            btn = QPushButton(symbol)
+            btn = QPushButton() 
             btn.setObjectName("iconBtn")
+            btn.setProperty("active", False) 
+            
+            icon_path = os.path.join(_DIR, "icons", f"{key}.svg")
+            if os.path.exists(icon_path):
+                btn.setIcon(QIcon(icon_path))
+                btn.setIconSize(QSize(22, 22)) 
+            else:
+                btn.setText(symbol) 
+                
             btn.setToolTip(tooltip)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFixedSize(40, 40)
+            btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            
             btn.clicked.connect(lambda checked=False, k=key: self._on_click(k))
             layout.addWidget(btn)
             self._buttons[key] = btn
 
         layout.addStretch()
+        self.setFixedWidth(52)
 
     def _on_click(self, key):
         self.icon_clicked.emit(key)
@@ -740,39 +794,19 @@ class IconBar(QFrame):
     def set_active(self, key):
         self._active = key
         for k, btn in self._buttons.items():
-            if k == key:
-                btn.setStyleSheet(
-                    "QPushButton#iconBtn{"
-                    "background:" + p("tag_bg") + ";"
-                    "color:" + p("accent") + ";"
-                    "border-radius:10px;}"
-                    "QPushButton#iconBtn:hover{"
-                    "background:" + p("tag_bg") + ";"
-                    "color:" + p("accent") + ";}"
-                )
-            else:
-                btn.setStyleSheet(
-                    "QPushButton#iconBtn{"
-                    "background:transparent;"
-                    "color:" + p("text3") + ";"
-                    "border-radius:10px;}"
-                    "QPushButton#iconBtn:hover{"
-                    "background:" + p("btn_hover") + ";"
-                    "color:" + p("text") + ";}"
-                )
+            is_active = (k == key)
+            btn.setProperty("active", is_active)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+        
+        self.update()
 
     def clear_active(self):
         self._active = None
         for btn in self._buttons.values():
-            btn.setStyleSheet(
-                "QPushButton#iconBtn{"
-                "background:transparent;"
-                "color:" + p("text3") + ";"
-                "border-radius:10px;}"
-                "QPushButton#iconBtn:hover{"
-                "background:" + p("btn_hover") + ";"
-                "color:" + p("text") + ";}"
-            )
+            btn.setProperty("active", False)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
 
 class FavoritesPage(QWidget):
@@ -1292,17 +1326,38 @@ class BrowserTab(QWidget):
         bl.setContentsMargins(10, 0, 10, 0)
         bl.setSpacing(4)
 
-        for symbol, slot, tip in [
-            ("←", lambda: self.view.back(),    "Back  (Alt+Left)"),
-            ("→", lambda: self.view.forward(), "Forward  (Alt+Right)"),
-            ("↺", lambda: self.view.reload(),  "Reload  (F5)"),
-        ]:
-            btn = QPushButton(symbol)
-            btn.setObjectName("navBtn")
-            btn.setToolTip(tip)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(slot)
-            bl.addWidget(btn)
+        
+        icons_path = os.path.join(_DIR, "icons")
+
+        
+        self.back_btn = QToolButton()
+        self.back_btn.setObjectName("navBtn")
+        self.back_btn.setIcon(QIcon(os.path.join(icons_path, "back.svg")))
+        self.back_btn.setIconSize(QSize(18, 18))
+        self.back_btn.setToolTip("Back (Alt+Left)")
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        self.back_btn.clicked.connect(lambda: self.view.back())
+        bl.addWidget(self.back_btn)
+
+        
+        self.forward_btn = QToolButton()
+        self.forward_btn.setObjectName("navBtn")
+        self.forward_btn.setIcon(QIcon(os.path.join(icons_path, "forward.svg")))
+        self.forward_btn.setIconSize(QSize(18, 18))
+        self.forward_btn.setToolTip("Forward (Alt+Right)")
+        self.forward_btn.setCursor(Qt.PointingHandCursor)
+        self.forward_btn.clicked.connect(lambda: self.view.forward())
+        bl.addWidget(self.forward_btn)
+
+        
+        self.reload_btn = QToolButton()
+        self.reload_btn.setObjectName("navBtn")
+        self.reload_btn.setIcon(QIcon(os.path.join(icons_path, "refresh.svg")))
+        self.reload_btn.setIconSize(QSize(18, 18))
+        self.reload_btn.setToolTip("Reload (F5)")
+        self.reload_btn.setCursor(Qt.PointingHandCursor)
+        self.reload_btn.clicked.connect(lambda: self.view.reload())
+        bl.addWidget(self.reload_btn)
 
         bl.addSpacing(4)
 
@@ -1313,21 +1368,21 @@ class BrowserTab(QWidget):
 
         bl.addSpacing(4)
 
-        src_btn = QPushButton("{ }")
-        src_btn.setObjectName("navBtn")
-        src_btn.setToolTip("View Page Source  (Ctrl+U)")
-        src_btn.setCursor(Qt.PointingHandCursor)
-        src_btn.setStyleSheet(
+        self.code_btn = QToolButton()
+        self.code_btn.setObjectName("navBtn")
+        self.code_btn.setIcon(QIcon(os.path.join(icons_path, "code.svg")))
+        self.code_btn.setIconSize(QSize(18, 18))
+        self.code_btn.setStyleSheet(
             "QPushButton#navBtn{font-size:11px;font-weight:700;}"
         )
-        src_btn.clicked.connect(self._view_source)
-        bl.addWidget(src_btn)
+        self.code_btn.clicked.connect(self._view_source)
+        bl.addWidget(self.code_btn)
 
-        self.opt_btn = QPushButton("OPT")
+        self.opt_btn = QToolButton()
         self.opt_btn.setObjectName("navBtn")
-        self.opt_btn.setCheckable(True)
-        self.opt_btn.setChecked(self._opt)
-        self.opt_btn.setToolTip("Toggle Optimization Engine")
+        self.opt_btn.setIcon(QIcon(os.path.join(icons_path, "opt.svg")))
+        self.opt_btn.setIconSize(QSize(18, 18))
+        self.opt_btn.setCursor(Qt.PointingHandCursor)
         self.opt_btn.setCursor(Qt.PointingHandCursor)
         self.opt_btn.setStyleSheet(
             "QPushButton#navBtn{font-size:10px;font-weight:700;}"
@@ -1583,12 +1638,14 @@ class MainWindow(QMainWindow):
         cor_lay.setContentsMargins(0, 0, 8, 0)
         cor_lay.setSpacing(4)
 
-        new_btn = QPushButton("+")
-        new_btn.setObjectName("navBtn")
-        new_btn.setFixedSize(30, 30)
-        new_btn.setToolTip("New Tab  (Ctrl+T)")
-        new_btn.setCursor(Qt.PointingHandCursor)
-        new_btn.clicked.connect(self.add_tab)
+        icons_path = os.path.join(_DIR, "icons")
+        self.new_btn = QToolButton()
+        self.new_btn.setObjectName("navBtn")
+        self.new_btn.setIcon(QIcon(os.path.join(icons_path, "plus.svg")))
+        self.new_btn.setIconSize(QSize(18, 18))
+        self.new_btn.setToolTip("New Tab (Ctrl+T)")
+        self.new_btn.setCursor(Qt.PointingHandCursor)
+        self.new_btn.clicked.connect(self.add_tab)
 
         secret_btn = QPushButton("Secret")
         secret_btn.setObjectName("navBtn")
@@ -1612,7 +1669,7 @@ class MainWindow(QMainWindow):
         self._theme_btn.setCursor(Qt.PointingHandCursor)
         self._theme_btn.clicked.connect(self._cycle_theme)
 
-        for w in (new_btn, secret_btn, self._theme_btn):
+        for w in (self.new_btn, secret_btn, self._theme_btn):
             cor_lay.addWidget(w)
         self.tabs.setCornerWidget(corner, Qt.TopRightCorner)
 
@@ -1700,7 +1757,7 @@ class MainWindow(QMainWindow):
         short = (title[:20] + "…") if len(title) > 20 else (title or "New Tab")
         self.tabs.setTabText(idx, short)
         if self.tabs.currentIndex() == idx:
-            self.setWindowTitle(title + "  —  Cysra Anome 7.0")
+            self.setWindowTitle(title + "  —  Cysra Anome Biscuit 7.1")
 
     def _close_tab(self, idx):
         if self.tabs.count() <= 1:
@@ -1740,12 +1797,9 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
-    os.environ.setdefault(
-        "QTWEBENGINE_CHROMIUM_FLAGS",
-        "--disable-gpu-sandbox --no-sandbox --disable-dev-shm-usage"
-    )
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps,    True)
+
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
