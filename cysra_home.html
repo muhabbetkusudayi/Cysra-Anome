@@ -24,13 +24,11 @@ html, body { width:100%; min-height:100vh; background:var(--bg); color:var(--tex
   font-family:-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased; transition:background 0.25s, color 0.25s; }
 body { display:flex; flex-direction:column; align-items:center; padding-bottom:80px; overflow-x:hidden; }
-/* Logo çok büyük olduğu için wrap genişliğini artırdım */
 .wrap { width:100%; max-width:920px; padding:0 20px; display:flex; flex-direction:column; align-items:center; }
 
 .hero { margin-top:60px; display:flex; flex-direction:column; align-items:center;
   gap:0; opacity:0; animation:rise 0.5s ease 0.05s forwards; }
 
-/* BOYUT 8 KATINA ÇIKARILDI (110px -> 880px) */
 .logo-wrap { position:relative; width:600px; height:100px; margin-bottom:100px; max-width:100%; }
 .logo-img { width:880px; height:880px; border-radius:120px; object-fit:contain; display:block; max-width:100%; }
 .logo-fallback { width:880px; height:880px; border-radius:120px; background:var(--accent);
@@ -257,4 +255,5 @@ setTimeout(function(){
 },350);
 </script>
 </body>
+
 </html>
