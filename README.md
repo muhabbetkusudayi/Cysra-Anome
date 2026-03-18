@@ -1,16 +1,24 @@
-# Cysra Anome 7.1 Biscuit
+# Cysra Anome 7.2 Biscuit
+
+**Cysra Anome 7.2 Biscuit** is a fast, secure, and user-friendly web browser. This version comes with UI improvements, a secure password manager, light mode fixes, and an advanced file download system.
+
+---
 
 ## Features
-- Fixed icon and rendering issues
-- Added "Do Not Track" feature
-- Performance and memory optimizations
+
+- **Enhanced UI & Light Mode Fixes**: All buttons and panels are fully visible, clickable, and consistently colored.  
+- **Secure Password Manager**: Master password fully controls access; passwords are stored securely using AES encryption.  
+- **Reliable File Download System**: Supports chunked downloads with retry logic; large files complete without freezing.  
+- **Web Page Button Support**: JavaScript-based buttons on websites (like Download buttons) work reliably.  
+- **Performance Optimizations**: Improved rendering, event handling, and UI responsiveness.
+
+---
 
 ## Installation
-1. Download the package.
-2. Extract it to your preferred directory.
-3. Launch `build.bat` for make an executable file or the `cysrabrowser.py` for debugging.
 
-## Notes
-- This version is faster and more stable than previous releases.
-- We have quality **icons** now.
+1. Download the project files to your computer.  
+2. Make sure **Python 3.10+** is installed.  
+3. Install required packages:
 
+```bash
+pip install -r requirements.txt
