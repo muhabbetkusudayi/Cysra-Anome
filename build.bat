@@ -1,6 +1,6 @@
 @echo off
 echo =========================
-echo   Building Cysra Anome Biscuit 7.1
+echo   Building Cysra Anome Biscuit
 echo =========================
 
 python -m pip install --upgrade pip
