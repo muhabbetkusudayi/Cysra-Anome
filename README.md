@@ -21,4 +21,4 @@
 3. Install required packages:
 
 ```bash
-pip install -r requirements.txt
+pip install -r req.txt
