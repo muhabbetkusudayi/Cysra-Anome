@@ -5,11 +5,16 @@ import time
 import importlib.util
 import traceback
 import gc
-import base64  
-import ctypes  
-from ctypes import wintypes  
+import base64
+import ctypes
+from ctypes import wintypes
 from datetime import datetime
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
+try:
+    from deep_translator import GoogleTranslator
+    TRANSLATOR_OK = True
+except ImportError:
+    TRANSLATOR_OK = False
 
 
 class DNTInterceptor(QWebEngineUrlRequestInterceptor):
@@ -152,7 +157,7 @@ PALETTES = {
         "selection":      "#d8dee9",
         "star_off":       "#4c566a",
         "star_on":        "#ebcb8b",
-        "tag_bg":         "rgba(94, 129, 172, 0.1)",
+        "tag_bg":         "rgba(94, 129, 172, 0.15)",
         "ext_colors":     ["#5e81ac", "#a3be8c", "#bf616a", "#ebcb8b",
                            "#b48ead", "#88c0d0", "#8fbcbb", "#d08770"],
     },
@@ -175,25 +180,36 @@ class MemoryManager(QObject):
         super().__init__(parent)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.optimize)
-        self.timer.start(30000)  # Perf: periodic cleanup.
+        self.timer.start(60000)
 
     def optimize(self):
-        gc.collect()  # Perf: reduce long-run memory growth.
+        gc.collect()
+
+    def apply_perf_mode(self, mode):
         try:
             profile = QWebEngineProfile.defaultProfile()
-            profile.clearHttpCache()  # Perf: clear cache occasionally for smoother behavior.
-            profile.setHttpCacheMaximumSize(50 * 1024 * 1024)  # Perf: cap cache size.
+            if mode == "lowest":
+                profile.setHttpCacheType(QWebEngineProfile.MemoryHttpCache)
+                profile.setHttpCacheMaximumSize(10 * 1024 * 1024)
+            elif mode == "low":
+                profile.setHttpCacheType(QWebEngineProfile.MemoryHttpCache)
+                profile.setHttpCacheMaximumSize(30 * 1024 * 1024)
+            elif mode == "medium":
+                profile.setHttpCacheType(QWebEngineProfile.DiskHttpCache)
+                profile.setHttpCacheMaximumSize(100 * 1024 * 1024)
+            elif mode == "high":
+                profile.setHttpCacheType(QWebEngineProfile.DiskHttpCache)
+                profile.setHttpCacheMaximumSize(250 * 1024 * 1024)
         except Exception:
             pass
 
 
 def _entropy_from_master(master_pwd):
-    import hashlib  # Security: derive stable DPAPI entropy from master password.
+    import hashlib
     return hashlib.sha256((master_pwd or "").encode("utf-8")).digest()
 
 
 def _dpapi_protect(plaintext_bytes, entropy):
-    # Security: encrypt secrets at rest using OS-backed key storage (DPAPI).
     if plaintext_bytes is None:
         plaintext_bytes = b""
 
@@ -218,7 +234,6 @@ def _dpapi_protect(plaintext_bytes, entropy):
 
 
 def _dpapi_unprotect(cipher_bytes, entropy):
-    # Security: decrypt secrets at rest using OS-backed key storage (DPAPI).
     if cipher_bytes is None:
         return b""
 
@@ -243,7 +258,6 @@ def _dpapi_unprotect(cipher_bytes, entropy):
 
 
 def safe_eval(expr):
-    # UI: provide a safe limited evaluator for internal calculator/plugin use.
     allowed = {"abs": abs, "round": round, "min": min, "max": max,
                "sum": sum, "pow": pow, "int": int, "float": float, "len": len}
     try:
@@ -257,7 +271,6 @@ def safe_eval(expr):
 
 
 def make_letter_pixmap(letter, color_hex, size=34):
-    # UI: generate colored circle avatars for extension lists.
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     painter = QPainter(pm)
@@ -324,12 +337,25 @@ class AddressBar(QFrame):
             self.style().polish(self)
             self.url_input.selectAll()
             QLineEdit.focusInEvent(self.url_input, ev)
+            
+            perf = "medium"
+            try:
+                perf = self.parent().store.perf_mode
+            except Exception:
+                pass
+            if perf in ("medium", "high"):
+                glow = QGraphicsDropShadowEffect(self)
+                glow.setBlurRadius(15 if perf == "high" else 8)
+                glow.setColor(QColor(p("accent")))
+                glow.setOffset(0, 0)
+                self.setGraphicsEffect(glow)
 
         def on_focus_out(ev):
             self.setProperty("focused", False)
             self.style().unpolish(self)
             self.style().polish(self)
             QLineEdit.focusOutEvent(self.url_input, ev)
+            self.setGraphicsEffect(None)
 
         self.url_input.focusInEvent = on_focus_in
         self.url_input.focusOutEvent = on_focus_out
@@ -427,8 +453,27 @@ class TabItemWidget(QWidget):
             self.icon_label.setPixmap(icon.pixmap(18, 18))
 
 
-def build_stylesheet():
-    # UI: use format template to avoid accidental triple-quote termination.
+def build_stylesheet(perf_mode="medium"):
+    theme_palette = dict(PALETTES[_theme])
+    if perf_mode in ("lowest", "low"):
+        if _theme == "dark":
+            theme_palette["toolbar"] = "#1a1a1e"
+            theme_palette["sidebar"] = "#131317"
+            theme_palette["card"] = "#1e1e24"
+        else:
+            theme_palette["toolbar"] = "#ffffff"
+            theme_palette["sidebar"] = "#ffffff"
+            theme_palette["card"] = "#ffffff"
+    elif perf_mode == "high":
+        if _theme == "dark":
+            theme_palette["toolbar"] = "rgba(26, 26, 30, 0.45)"
+            theme_palette["sidebar"] = "rgba(19, 19, 23, 0.55)"
+            theme_palette["card"] = "rgba(30, 30, 36, 0.55)"
+        else:
+            theme_palette["toolbar"] = "rgba(255, 255, 255, 0.45)"
+            theme_palette["sidebar"] = "rgba(255, 255, 255, 0.55)"
+            theme_palette["card"] = "rgba(255, 255, 255, 0.55)"
+
     return (
         """
 QWidget {{
@@ -438,7 +483,6 @@ QWidget {{
     font-size: 13px;
     outline: none;
 }}
-/* UI consistency: normalize common form controls so light/white mode never falls back to hard-to-read defaults */
 QLineEdit, QTextEdit, QComboBox {{
     background: {input_bg};
     color: {text};
@@ -452,7 +496,6 @@ QLineEdit:focus, QTextEdit:focus, QComboBox:focus {{
 QLineEdit::placeholder, QTextEdit::placeholder {{
     color: {text3};
 }}
-/* UI consistency: ensure section headers and accent buttons remain readable in white mode */
 QLabel#sectionHead {{ background: transparent; color: {accent}; }}
 QPushButton#accentBtn {{
     background: {accent};
@@ -599,29 +642,29 @@ QMenu::item {{ padding: 10px 24px; border-radius: 12px; }}
 QMenu::item:selected {{ background: {btn_hover}; }}
 """
     ).format(
-        bg=p("bg"),
-        toolbar=p("toolbar"),
-        sidebar=p("sidebar"),
-        tab_active=p("tab_active"),
-        tab_text=p("tab_text"),
-        tab_active_txt=p("tab_active_txt"),
-        url_bg=p("url_bg"),
-        url_focus_bg=p("url_focus_bg"),
-        btn_hover=p("btn_hover"),
-        accent=p("accent"),
-        accent2=p("accent2"),
-        text=p("text"),
-        text2=p("text2"),
-        text3=p("text3"),
-        border=p("border"),
-        card=p("card"),
-        panel_bg=p("panel_bg"),
-        panel_hdr=p("panel_hdr"),
-        input_bg=p("input_bg"),
-        input_bdr=p("input_bdr"),
-        danger=p("danger"),
-        scrollbar=p("scrollbar"),
-        tag_bg=p("tag_bg"),
+        bg=theme_palette["bg"],
+        toolbar=theme_palette["toolbar"],
+        sidebar=theme_palette["sidebar"],
+        tab_active=theme_palette["tab_active"],
+        tab_text=theme_palette["tab_text"],
+        tab_active_txt=theme_palette["tab_active_txt"],
+        url_bg=theme_palette["url_bg"],
+        url_focus_bg=theme_palette["url_focus_bg"],
+        btn_hover=theme_palette["btn_hover"],
+        accent=theme_palette["accent"],
+        accent2=theme_palette["accent2"],
+        text=theme_palette["text"],
+        text2=theme_palette["text2"],
+        text3=theme_palette["text3"],
+        border=theme_palette["border"],
+        card=theme_palette["card"],
+        panel_bg=theme_palette["panel_bg"],
+        panel_hdr=theme_palette["panel_hdr"],
+        input_bg=theme_palette["input_bg"],
+        input_bdr=theme_palette["input_bdr"],
+        danger=theme_palette["danger"],
+        scrollbar=theme_palette["scrollbar"],
+        tag_bg=theme_palette["tag_bg"],
     )
 
 
@@ -629,7 +672,6 @@ OPT_JS = """
 (function(){
     if(window.__cysra__)return;
     window.__cysra__=true;
-    // Perf: throttle DOM pruning to animation frames to avoid running on every mutation synchronously.
     var _sched=false;
     var prune=function(){
         document.querySelectorAll('[style*="display:none"],[style*="display: none"]').forEach(function(el){
@@ -661,7 +703,6 @@ SECRET_JS = """
 (function(){
     if(window.__cysra_secret__)return;
     window.__cysra_secret__=true;
-    // Relaxed security JS to avoid breaking sites
     try{navigator.sendBeacon=function(){return false;};}catch(e){}
 })();
 """
@@ -672,8 +713,8 @@ class DataStore(QObject):
 
     def __init__(self):
         super().__init__()
-        self._data = {"history": [], "favorites": [], "passwords": [], "master_pwd": None}
-        self._mp_entropy = None  # Security: decryption only available after successful unlock.
+        self._data = {"history": [], "favorites": [], "passwords": [], "master_pwd": None, "perf_mode": "medium"}
+        self._mp_entropy = None
         self._load()
 
     def _load(self):
@@ -682,17 +723,26 @@ class DataStore(QObject):
                 with open(DATA_FILE, encoding="utf-8") as f:
                     self._data = json.load(f)
         except Exception:
-            self._data = {"history": [], "favorites": [], "passwords": [], "master_pwd": None}
+            self._data = {"history": [], "favorites": [], "passwords": [], "master_pwd": None, "perf_mode": "medium"}
 
     def _save(self):
         try:
             with open(DATA_FILE, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2, ensure_ascii=False)
-        except Exception as exc:
-            print("DataStore save error:", exc)
+        except Exception:
+            pass
+
+    @property
+    def perf_mode(self):
+        return self._data.get("perf_mode", "medium")
+
+    @perf_mode.setter
+    def perf_mode(self, val):
+        self._data["perf_mode"] = val
+        self._save()
+        self.changed.emit()
 
     def add_history(self, url, title=""):
-        # Perf/UI: cap history and avoid storing internal pages.
         skip_patterns = ["cysra_home.html", "about:blank", "about:", "view-source:"]
         for pat in skip_patterns:
             if pat in (url or ""):
@@ -707,7 +757,6 @@ class DataStore(QObject):
         self.changed.emit()
 
     def clear_history(self):
-        # UI: allow user to clear browsing history.
         self._data["history"] = []
         self._save()
         self.changed.emit()
@@ -717,7 +766,6 @@ class DataStore(QObject):
         return self._data.get("history", [])
 
     def add_favorite(self, url, title=""):
-        # UI: store favorites used by AddressBar and home data.
         favs = self._data.setdefault("favorites", [])
         if not any(f.get("url") == url for f in favs):
             favs.append({"url": url, "title": title or url})
@@ -738,9 +786,9 @@ class DataStore(QObject):
 
     def add_password(self, site, user, pwd):
         if not self._mp_entropy:
-            return  # Security: never store/reveal passwords unless master is unlocked.
+            return
         ct = _dpapi_protect((pwd or "").encode("utf-8"), self._mp_entropy)
-        enc_pwd = {"v": 1, "enc": "dpapi", "ct": base64.b64encode(ct).decode("utf-8")}  # Security: encrypted JSON payload.
+        enc_pwd = {"v": 1, "enc": "dpapi", "ct": base64.b64encode(ct).decode("utf-8")}
         self._data.setdefault("passwords", []).append({"site": site, "user": user, "pwd": enc_pwd})
         self._save()
         self.changed.emit()
@@ -753,7 +801,7 @@ class DataStore(QObject):
     @property
     def passwords(self):
         if not self._mp_entropy:
-            return []  # Security: do not expose stored secrets without unlocking.
+            return []
         out = []
         for p_ in self._data.get("passwords", []):
             dec = ""
@@ -763,7 +811,7 @@ class DataStore(QObject):
                     ct = base64.b64decode((blob.get("ct") or "").encode("utf-8"))
                     dec = _dpapi_unprotect(ct, self._mp_entropy).decode("utf-8", errors="replace")
                 elif isinstance(blob, str):
-                    dec = base64.b64decode(blob.encode("utf-8")).decode("utf-8", errors="replace")  # Security: legacy migration read.
+                    dec = base64.b64decode(blob.encode("utf-8")).decode("utf-8", errors="replace")
             except Exception:
                 dec = ""
             out.append({"site": p_.get("site", ""), "user": p_.get("user", ""), "pwd": dec})
@@ -782,11 +830,9 @@ class DataStore(QObject):
 
     @property
     def has_master_pwd(self):
-        # Security: indicate whether a master password has been set.
         return bool(self._data.get("master_pwd"))
 
     def unlock_master(self, pwd):
-        # Security: unlock enables decryption in memory and migrates legacy stored entries.
         if not self.check_master_pwd(pwd):
             return False
         self._mp_entropy = _entropy_from_master(pwd)
@@ -794,11 +840,9 @@ class DataStore(QObject):
         return True
 
     def lock_master(self):
-        # Security: wipe in-memory decryption capability.
         self._mp_entropy = None
 
     def _migrate_passwords_if_needed(self):
-        # Security: convert legacy base64 entries to DPAPI-encrypted payloads after successful unlock.
         if not self._mp_entropy:
             return
         changed = False
@@ -948,7 +992,7 @@ class ExtensionsPage(QWidget):
                 dlg = QDialog(self.mw, Qt.Dialog)
                 dlg.setWindowTitle(name)
                 dlg.setMinimumSize(400, 300)
-                dlg.setStyleSheet(build_stylesheet())
+                dlg.setStyleSheet(build_stylesheet(self.mw.store.perf_mode))
                 dlg_lay = QVBoxLayout(dlg)
                 dlg_lay.setContentsMargins(0, 0, 0, 0)
                 dlg_lay.addWidget(widget)
@@ -1006,7 +1050,7 @@ class PasswordManagerPage(QWidget):
 
     def on_show(self):
         self._authed = False
-        self.store.lock_master()  # Security: always re-lock secrets when page is shown.
+        self.store.lock_master()
         self.refresh()
 
     def _show_auth(self):
@@ -1043,7 +1087,7 @@ class PasswordManagerPage(QWidget):
     def _setup(self, pwd):
         if pwd:
             self.store.set_master_pwd(pwd)
-            self._authed = self.store.unlock_master(pwd)  # Security: unlock immediately after creating master.
+            self._authed = self.store.unlock_master(pwd)
             self.refresh()
 
     def _auth(self, pwd):
@@ -1190,8 +1234,8 @@ class NotesPage(QWidget):
             if os.path.exists(NOTES_FILE):
                 with open(NOTES_FILE, encoding="utf-8") as f:
                     self.editor.setPlainText(f.read())
-        except Exception as exc:
-            print("Notes load error:", exc)
+        except Exception:
+            pass
 
     def _save(self):
         try:
@@ -1205,14 +1249,15 @@ class NotesPage(QWidget):
 
 class SettingsPage(QWidget):
     theme_changed = pyqtSignal(str)
+    perf_changed = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, store, parent=None):
         super().__init__(parent)
+        self.store = store
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 16, 16, 16)
         lay.setSpacing(20)
 
-        # ── Appearance ───────────────────────────────────────────────────
         app_lbl = QLabel("Appearance")
         app_lbl.setObjectName("sectionHead")
         app_lbl.setStyleSheet(
@@ -1258,7 +1303,44 @@ class SettingsPage(QWidget):
         tr_lay.addLayout(btn_row)
         lay.addWidget(theme_row)
 
-        # ── About ────────────────────────────────────────────────────────
+        perf_lbl = QLabel("Performance")
+        perf_lbl.setObjectName("sectionHead")
+        perf_lbl.setStyleSheet(
+            "font-size:10px;font-weight:800;letter-spacing:1px;"
+            "color:" + p("accent") + ";background:transparent;"
+        )
+        lay.addWidget(perf_lbl)
+
+        perf_row = QFrame()
+        perf_row.setObjectName("card")
+        perf_row.setStyleSheet(
+            "QFrame#card{background:" + p("card") + ";border:1px solid "
+            + p("border") + ";border-radius:16px;}"
+        )
+        pr_lay = QVBoxLayout(perf_row)
+        pr_lay.setContentsMargins(16, 12, 16, 12)
+        pr_lay.setSpacing(10)
+
+        pr_title = QLabel("Performance Mode")
+        pr_title.setStyleSheet("font-size:12px;font-weight:700;color:" + p("text") + ";background:transparent;")
+        pr_lay.addWidget(pr_title)
+
+        self.perf_combo = QComboBox()
+        self.perf_combo.addItem("Lowest (Not Recommended)", "lowest")
+        self.perf_combo.addItem("Low", "low")
+        self.perf_combo.addItem("Medium (Default)", "medium")
+        self.perf_combo.addItem("High (Enhanced Visuals)", "high")
+        self.perf_combo.setCurrentIndex(self.perf_combo.findData(self.store.perf_mode))
+        self.perf_combo.currentIndexChanged.connect(self._on_perf_changed)
+        pr_lay.addWidget(self.perf_combo)
+
+        self.perf_note = QLabel("")
+        self.perf_note.setWordWrap(True)
+        self.perf_note.setStyleSheet("font-size:10px;color:" + p("text3") + ";background:transparent;")
+        pr_lay.addWidget(self.perf_note)
+        self._update_perf_note(self.store.perf_mode)
+        lay.addWidget(perf_row)
+
         about_lbl = QLabel("About")
         about_lbl.setObjectName("sectionHead")
         about_lbl.setStyleSheet(
@@ -1276,7 +1358,7 @@ class SettingsPage(QWidget):
         ar_lay = QVBoxLayout(about_row)
         ar_lay.setContentsMargins(16, 12, 16, 12)
         ar_lay.setSpacing(4)
-        name_lbl = QLabel("Cysra Anome  7.2")
+        name_lbl = QLabel("Cysra Anome 7.3")
         name_lbl.setStyleSheet("font-weight:700;font-size:13px;color:" + p("text") + ";background:transparent;")
         built_lbl = QLabel("Built on PyQt5 + Chromium")
         built_lbl.setStyleSheet("font-size:11px;color:" + p("text3") + ";background:transparent;")
@@ -1285,6 +1367,21 @@ class SettingsPage(QWidget):
         lay.addWidget(about_row)
 
         lay.addStretch()
+
+    def _on_perf_changed(self, idx):
+        mode = self.perf_combo.itemData(idx)
+        self._update_perf_note(mode)
+        self.perf_changed.emit(mode)
+
+    def _update_perf_note(self, mode):
+        if mode == "lowest":
+            self.perf_note.setText("Lowest (Not Recommended): Aggressively optimize everything. Disable non-essential web engine attributes, hardware acceleration, and plugins to maximize raw speed, even if it means some YouTube videos or complex websites fail to render.")
+        elif mode == "low":
+            self.perf_note.setText("Low: Optimize general application performance, but keep essential rendering features intact so most websites and important content still load correctly.")
+        elif mode == "medium":
+            self.perf_note.setText("Medium: Standard default settings. Everything operates normally with a balance of performance and visual quality.")
+        elif mode == "high":
+            self.perf_note.setText("High: Enable full hardware acceleration and beautiful UI enhancements like glow/bloom effects, translucent panels, and smooth animations. Not recommended for low-end PCs.")
 
     def _update_theme_btns(self):
         active_style = (
@@ -1373,7 +1470,8 @@ class DownloadsPage(QWidget):
         
         def update_progress(received, total):
             try:
-                if not prog.isVisible(): return
+                if not prog.isVisible():
+                    return
                 if total > 0:
                     val = int((received / total) * 100)
                     prog.setValue(val)
@@ -1385,7 +1483,8 @@ class DownloadsPage(QWidget):
 
         def finished():
             try:
-                if not prog.isVisible(): return
+                if not prog.isVisible():
+                    return
                 prog.setValue(100)
                 prog.hide()
                 status_lbl.setText("Completed")
@@ -1396,53 +1495,6 @@ class DownloadsPage(QWidget):
         download_item.downloadProgress.connect(update_progress)
         download_item.finished.connect(finished)
         return item
-
-
-class DownloadThread(QThread):
-    progress = pyqtSignal(int, int)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-
-    def __init__(self, download_item):
-        super().__init__()
-        self.download_item = download_item
-        self.target_path = download_item.path()
-
-    def run(self):
-        try:
-            import requests
-            url = self.download_item.url().toString()
-            headers = {}
-            
-            retries = 3
-            success = False
-            
-            while retries > 0 and not success:
-                try:
-                    with requests.get(url, stream=True, timeout=30, headers=headers) as r:
-                        r.raise_for_status()
-                        total_size = int(r.headers.get('content-length', 0))
-                        downloaded = 0
-                        
-                        with open(self.target_path, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    self.progress.emit(downloaded, total_size)
-                            f.flush()
-                            os.fsync(f.fileno())
-                        success = True
-                except Exception as e:
-                    retries -= 1
-                    if retries == 0:
-                        self.error.emit(str(e))
-                        return
-                    time.sleep(2)
-            
-            self.finished.emit()
-        except Exception as e:
-            self.error.emit(str(e))
 
 
 class IconBar(QFrame):
@@ -1462,14 +1514,14 @@ class IconBar(QFrame):
         self._buttons = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)  # UI: flush sidebar.
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addStretch(1)
 
         inner = QWidget()
         inner.setAttribute(Qt.WA_TranslucentBackground)
         inner_lay = QVBoxLayout(inner)
-        inner_lay.setContentsMargins(8, 0, 8, 0)  # UI: symmetric padding.
+        inner_lay.setContentsMargins(8, 0, 8, 0)
         inner_lay.setSpacing(4)
         inner_lay.setAlignment(Qt.AlignHCenter)
 
@@ -1501,7 +1553,6 @@ class IconBar(QFrame):
         self.icon_clicked.emit(key)
 
     def refresh_icons(self):
-        # UI: refresh SVG icon color on theme change.
         for key, (btn, icon_path) in self._buttons.items():
             if os.path.exists(icon_path):
                 btn.setIcon(get_svg_icon(icon_path, p("accent")))
@@ -1533,7 +1584,7 @@ class HistoryPage(QWidget):
         super().__init__()
         self.store = store
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(12, 10, 12, 10)  # UI: consistent slide-panel spacing.
+        lay.setContentsMargins(12, 10, 12, 10)
         lay.setSpacing(8)
 
         top = QHBoxLayout()
@@ -1543,7 +1594,7 @@ class HistoryPage(QWidget):
         top.addWidget(self.search)
 
         clr = QPushButton("Clear All")
-        clr.setObjectName("dangerBtn")  # UI: readable in light mode.
+        clr.setObjectName("dangerBtn")
         clr.clicked.connect(self._clear)
         top.addWidget(clr)
         lay.addLayout(top)
@@ -1644,7 +1695,7 @@ class SlidePanel(QFrame):
         self._ext_page  = ExtensionsPage(main_window)
         self._tr_page   = TranslatePage()
         self._note_page = NotesPage()
-        self._set_page  = SettingsPage()
+        self._set_page  = SettingsPage(store)
 
         self._pages = {
             "history":   (self._hist_page, "History"),
@@ -1662,9 +1713,9 @@ class SlidePanel(QFrame):
         self._hist_page.navigate.connect(self.navigate)
         self._ext_page.navigate.connect(self.navigate)
         self._set_page.theme_changed.connect(self._apply_theme)
+        self._set_page.perf_changed.connect(self._apply_perf_mode)
 
         self._anim = QPropertyAnimation(self, b"maximumWidth")
-        self._anim.setDuration(160)
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
 
         self._open_width = 290
@@ -1689,20 +1740,40 @@ class SlidePanel(QFrame):
             page.on_show()
         if not self._is_open:
             self._is_open = True
-            self._anim.setStartValue(0)
-            self._anim.setEndValue(self._open_width)
-            self.setMaximumWidth(0)
-            self.show()
-            self._anim.start()
+            perf = "medium"
+            try:
+                perf = self.mw.store.perf_mode
+            except Exception:
+                pass
+            if perf in ("lowest", "low"):
+                self.setMaximumWidth(self._open_width)
+                self.show()
+            else:
+                self._anim.setStartValue(0)
+                self._anim.setEndValue(self._open_width)
+                self._anim.setDuration(160 if perf == "medium" else 240)
+                self.setMaximumWidth(0)
+                self.show()
+                self._anim.start()
 
     def close_panel(self):
         if not self._is_open:
             return
         self._is_open = False
-        self._anim.setStartValue(self._open_width)
-        self._anim.setEndValue(0)
-        self._anim.start()
-        self._anim.finished.connect(self._on_close_done)
+        perf = "medium"
+        try:
+            perf = self.mw.store.perf_mode
+        except Exception:
+            pass
+        if perf in ("lowest", "low"):
+            self.hide()
+            self._on_close_done()
+        else:
+            self._anim.setStartValue(self._open_width)
+            self._anim.setEndValue(0)
+            self._anim.setDuration(160 if perf == "medium" else 240)
+            self._anim.start()
+            self._anim.finished.connect(self._on_close_done)
 
     def _on_close_done(self):
         try:
@@ -1725,6 +1796,9 @@ class SlidePanel(QFrame):
         self.mw._set_theme(theme_name)
         if hasattr(self, "_set_page"):
             self._set_page.refresh_theme()
+
+    def _apply_perf_mode(self, mode):
+        self.mw._apply_perf_mode(mode)
 
 
 class BrowserTab(QWidget):
@@ -1750,26 +1824,9 @@ class BrowserTab(QWidget):
         self.view = QWebEngineView(self)
         self.view.setPage(self.page)
         self.view.page().fullScreenRequested.connect(self._handle_fullscreen)
-        if self.secret:
-            profile.downloadRequested.connect(self.mw._handle_download)
-        else:
-            profile.downloadRequested.connect(self.mw._handle_download)
+        profile.downloadRequested.connect(self.mw._handle_download)
 
-        s = self.view.settings()
-        s.setAttribute(QWebEngineSettings.JavascriptEnabled,               True)
-        s.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
-        s.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls,   True)
-        s.setAttribute(QWebEngineSettings.AutoLoadImages,                  True)
-        s.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows,        True)
-        s.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard,    True)
-        s.setAttribute(QWebEngineSettings.LinksIncludedInFocusChain,       True)
-        s.setAttribute(QWebEngineSettings.FocusOnNavigationEnabled,        True)
-        s.setAttribute(QWebEngineSettings.PlaybackRequiresUserGesture,    False)
-        s.setAttribute(QWebEngineSettings.FullScreenSupportEnabled,        True)
-        s.setAttribute(QWebEngineSettings.LocalStorageEnabled,             True)
-        s.setAttribute(QWebEngineSettings.PluginsEnabled,                  True)
-        s.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled,           True)
-        s.setAttribute(QWebEngineSettings.ErrorPageEnabled,                True)
+        self.apply_perf_mode(self.store.perf_mode)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -1790,7 +1847,7 @@ class BrowserTab(QWidget):
             ("reload",  "reload.svg",  self.view.reload),
             ("home",    "home.svg",    self.load_home),
         ]
-        self._nav_btns = {}  # key -> (btn, icon_path)
+        self._nav_btns = {}
         for key, icon_name, fn in nav_items:
             btn = QToolButton()
             btn.setObjectName("navBtn")
@@ -1856,8 +1913,61 @@ class BrowserTab(QWidget):
         self.view.loadProgress.connect(self.prog.setValue)
         self.view.loadFinished.connect(self._load_done)
 
+    def apply_perf_mode(self, mode):
+        s = self.view.settings()
+        if mode == "lowest":
+            s.setAttribute(QWebEngineSettings.JavascriptEnabled,               True)
+            s.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            s.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls,   True)
+            s.setAttribute(QWebEngineSettings.AutoLoadImages,                  True)
+            s.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows,        False)
+            s.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard,    False)
+            s.setAttribute(QWebEngineSettings.LinksIncludedInFocusChain,       True)
+            s.setAttribute(QWebEngineSettings.FocusOnNavigationEnabled,        False)
+            s.setAttribute(QWebEngineSettings.PlaybackRequiresUserGesture,     True)
+            s.setAttribute(QWebEngineSettings.FullScreenSupportEnabled,        False)
+            s.setAttribute(QWebEngineSettings.LocalStorageEnabled,             True)
+            s.setAttribute(QWebEngineSettings.PluginsEnabled,                  False)
+            s.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled,           False)
+            s.setAttribute(QWebEngineSettings.ErrorPageEnabled,                True)
+            s.setAttribute(QWebEngineSettings.WebGLEnabled,                    False)
+            s.setAttribute(QWebEngineSettings.Accelerated2dCanvasEnabled,      False)
+        elif mode == "low":
+            s.setAttribute(QWebEngineSettings.JavascriptEnabled,               True)
+            s.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            s.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls,   True)
+            s.setAttribute(QWebEngineSettings.AutoLoadImages,                  True)
+            s.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows,        True)
+            s.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard,    True)
+            s.setAttribute(QWebEngineSettings.LinksIncludedInFocusChain,       True)
+            s.setAttribute(QWebEngineSettings.FocusOnNavigationEnabled,        True)
+            s.setAttribute(QWebEngineSettings.PlaybackRequiresUserGesture,     False)
+            s.setAttribute(QWebEngineSettings.FullScreenSupportEnabled,        True)
+            s.setAttribute(QWebEngineSettings.LocalStorageEnabled,             True)
+            s.setAttribute(QWebEngineSettings.PluginsEnabled,                  False)
+            s.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled,           False)
+            s.setAttribute(QWebEngineSettings.ErrorPageEnabled,                True)
+            s.setAttribute(QWebEngineSettings.WebGLEnabled,                    True)
+            s.setAttribute(QWebEngineSettings.Accelerated2dCanvasEnabled,      False)
+        else:
+            s.setAttribute(QWebEngineSettings.JavascriptEnabled,               True)
+            s.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            s.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls,   True)
+            s.setAttribute(QWebEngineSettings.AutoLoadImages,                  True)
+            s.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows,        True)
+            s.setAttribute(QWebEngineSettings.JavascriptCanAccessClipboard,    True)
+            s.setAttribute(QWebEngineSettings.LinksIncludedInFocusChain,       True)
+            s.setAttribute(QWebEngineSettings.FocusOnNavigationEnabled,        True)
+            s.setAttribute(QWebEngineSettings.PlaybackRequiresUserGesture,     False)
+            s.setAttribute(QWebEngineSettings.FullScreenSupportEnabled,        True)
+            s.setAttribute(QWebEngineSettings.LocalStorageEnabled,             True)
+            s.setAttribute(QWebEngineSettings.PluginsEnabled,                  True)
+            s.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled,           True)
+            s.setAttribute(QWebEngineSettings.ErrorPageEnabled,                True)
+            s.setAttribute(QWebEngineSettings.WebGLEnabled,                    True)
+            s.setAttribute(QWebEngineSettings.Accelerated2dCanvasEnabled,      True)
+
     def _refresh_icons(self):
-        """Re-render all toolbar SVG icons with current theme colors."""
         icons_path = os.path.join(_DIR, "icons")
         for key, (btn, icon_file) in self._nav_btns.items():
             if os.path.exists(icon_file):
@@ -1891,17 +2001,14 @@ class BrowserTab(QWidget):
             self.view.setHtml(self._error_html())
             return
         
-        # Ensure DOM events are properly dispatched for interactive elements
         self.page.runJavaScript("""
             (function() {
                 if (window.__cysra_patch_applied) return;
                 window.__cysra_patch_applied = true;
-                
                 document.addEventListener('click', function(e) {
                     let target = e.target;
                     while (target && target !== document) {
                         if (target.tagName === 'BUTTON' || target.tagName === 'A' || target.onclick || target.getAttribute('role') === 'button') {
-                            // Ensure the event propagates correctly if it's a dynamic element
                             if (!e.isTrusted) return; 
                         }
                         target = target.parentNode;
@@ -2038,7 +2145,7 @@ class BrowserTab(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Cysra Anome 7.2 Biscuit")
+        self.setWindowTitle("Cysra Anome 7.3 Biscuit")
         self.setMinimumSize(1000, 650)
         self.setGeometry(50, 50, 1440, 900)
 
@@ -2047,13 +2154,13 @@ class MainWindow(QMainWindow):
         self._opt = False
 
         self._dl_page = DownloadsPage()
-        QWebEngineProfile.defaultProfile().downloadRequested.connect(self._handle_download)
-
+        
         self.memory_manager = MemoryManager(self)
+        self.memory_manager.apply_perf_mode(self.store.perf_mode)
 
         self._build()
         self._shortcuts()
-        self.setStyleSheet(build_stylesheet())
+        self._apply_perf_mode(self.store.perf_mode)
         self.add_tab()
         self._load_extensions()
 
@@ -2066,38 +2173,7 @@ class MainWindow(QMainWindow):
             if path:
                 item.setPath(path)
                 item.accept()
-                
-                dl_item = self._dl_page.add_item(item)
-                
-                thread = DownloadThread(item)
-                item._thread = thread
-                
-                container = self._dl_page.list.itemWidget(dl_item)
-                prog = container.findChild(QProgressBar)
-                status_lbl = container.findChildren(QLabel)[1]
-                
-                def on_progress(received, total):
-                    if total > 0:
-                        val = int((received / total) * 100)
-                        prog.setValue(val)
-                        status_lbl.setText(f"{val}% - {received//1024}KB / {total//1024}KB")
-                    else:
-                        status_lbl.setText(f"{received//1024}KB downloaded")
-                
-                def on_finished():
-                    prog.setValue(100)
-                    prog.hide()
-                    status_lbl.setText("Completed")
-                    status_lbl.setStyleSheet("font-size: 10px; color: " + p("success") + ";")
-                
-                def on_error(err):
-                    status_lbl.setText(f"Error: {err}")
-                    status_lbl.setStyleSheet("font-size: 10px; color: " + p("danger") + ";")
-
-                thread.progress.connect(on_progress)
-                thread.finished.connect(on_finished)
-                thread.error.connect(on_error)
-                thread.start()
+                self._dl_page.add_item(item)
             else:
                 item.cancel()
         except Exception:
@@ -2115,7 +2191,6 @@ class MainWindow(QMainWindow):
         main_lay.setContentsMargins(0, 0, 0, 0)
         main_lay.setSpacing(0)
 
-        # ── LEFT PANEL: Icon buttons only, big & centered ──────────────
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(76)
@@ -2129,17 +2204,14 @@ class MainWindow(QMainWindow):
 
         main_lay.addWidget(self.sidebar)
 
-        # ── SLIDE PANEL (panel that slides in from left) ───────────────
         self.slide_panel = SlidePanel(self.store, self._dl_page, self)
         self.slide_panel.navigate.connect(self._navigate_current)
         self.slide_panel.set_close_callback(self.icon_bar.clear_active)
         self.slide_panel.hide()
         main_lay.addWidget(self.slide_panel)
 
-        # ── CENTER: Browser tabs ───────────────────────────────────────
         main_lay.addWidget(self.tabs, 1)
 
-        # ── RIGHT PANEL: Tab list + New Tab button ─────────────────────
         self.tab_panel = QFrame()
         self.tab_panel.setObjectName("tabPanel")
         self.tab_panel.setFixedWidth(220)
@@ -2147,7 +2219,6 @@ class MainWindow(QMainWindow):
         tp_lay.setContentsMargins(0, 0, 0, 0)
         tp_lay.setSpacing(0)
 
-        # Header row: label + new tab button
         hdr_w = QWidget()
         hdr_w.setObjectName("tabPanelHeader")
         hdr_w.setFixedHeight(52)
@@ -2155,7 +2226,7 @@ class MainWindow(QMainWindow):
         hdr_lay.setContentsMargins(16, 0, 10, 0)
         hdr_lay.setSpacing(8)
 
-        logo = QLabel("ANOME 7.2")
+        logo = QLabel("ANOME 7.3")
         logo.setStyleSheet(
             "font-weight:800;font-size:14px;letter-spacing:2px;"
             "color:" + p("accent") + ";background:transparent;"
@@ -2180,7 +2251,6 @@ class MainWindow(QMainWindow):
 
         tp_lay.addWidget(hdr_w)
 
-        # Divider
         div = QFrame()
         div.setFrameShape(QFrame.HLine)
         div.setStyleSheet("background:" + p("border") + ";max-height:1px;border:none;")
@@ -2200,7 +2270,7 @@ class MainWindow(QMainWindow):
         self.tab_list.blockSignals(False)
         tab = self.tabs.widget(idx)
         if isinstance(tab, BrowserTab):
-            self.setWindowTitle(tab.view.title() + "  —  Cysra Anome 7.2 Biscuit")
+            self.setWindowTitle(tab.view.title() + "  —  Cysra Anome 7.3 Biscuit")
 
     def add_tab(self, secret=False):
         tab = BrowserTab(self, self.store, secret=(secret or self._secret), opt=self._opt)
@@ -2224,7 +2294,7 @@ class MainWindow(QMainWindow):
                 if tw:
                     tw.set_title(title if title else "New Tab")
             if self.tabs.currentIndex() == idx:
-                self.setWindowTitle((title if title else "New Tab") + "  —  Cysra Anome 7.2 Biscuit")
+                self.setWindowTitle((title if title else "New Tab") + "  —  Cysra Anome 7.3 Biscuit")
 
     def _close_tab(self, idx):
         if self.tabs.count() <= 1:
@@ -2234,6 +2304,7 @@ class MainWindow(QMainWindow):
         self.tab_list.takeItem(idx)
         if w:
             w.deleteLater()
+        QTimer.singleShot(1000, gc.collect)
 
     def _load_extensions(self):
         extensions_dir = os.path.join(_DIR, "extensions")
@@ -2260,23 +2331,61 @@ class MainWindow(QMainWindow):
 
     def _set_theme(self, theme_name):
         set_theme(theme_name)
-        self.setStyleSheet(build_stylesheet())
-        # Refresh all SVG icons in the icon bar with new theme colors
+        self.setStyleSheet(build_stylesheet(self.store.perf_mode))
         self.icon_bar.refresh_icons()
-        # Refresh the slide panel header label color
         if hasattr(self, "slide_panel"):
             lbl = self.slide_panel._header_lbl
             lbl.setStyleSheet(
                 "font-weight: 800; font-size: 11px; letter-spacing: 1.5px;"
                 "color: " + p("accent") + "; background: transparent;"
             )
-        # Refresh nav button icons in all tabs
         for i in range(self.tabs.count()):
             t = self.tabs.widget(i)
             if isinstance(t, BrowserTab):
                 t._refresh_icons()
                 if "cysra_home.html" in t.view.url().toString():
                     t._push_home_data()
+
+    def _apply_perf_mode(self, mode):
+        self.store.perf_mode = mode
+        self.memory_manager.apply_perf_mode(mode)
+        
+        self.setStyleSheet(build_stylesheet(mode))
+        
+        self.slide_panel.setGraphicsEffect(None)
+        self.tab_panel.setGraphicsEffect(None)
+        
+        if mode == "high":
+            shadow_panel = QGraphicsDropShadowEffect(self.slide_panel)
+            shadow_panel.setBlurRadius(25)
+            shadow_panel.setColor(QColor(0, 0, 0, 120))
+            shadow_panel.setOffset(4, 0)
+            self.slide_panel.setGraphicsEffect(shadow_panel)
+            
+            shadow_tab = QGraphicsDropShadowEffect(self.tab_panel)
+            shadow_tab.setBlurRadius(25)
+            shadow_tab.setColor(QColor(0, 0, 0, 120))
+            shadow_tab.setOffset(-4, 0)
+            self.tab_panel.setGraphicsEffect(shadow_tab)
+        elif mode == "medium":
+            shadow_panel = QGraphicsDropShadowEffect(self.slide_panel)
+            shadow_panel.setBlurRadius(10)
+            shadow_panel.setColor(QColor(0, 0, 0, 60))
+            shadow_panel.setOffset(2, 0)
+            self.slide_panel.setGraphicsEffect(shadow_panel)
+            
+            shadow_tab = QGraphicsDropShadowEffect(self.tab_panel)
+            shadow_tab.setBlurRadius(10)
+            shadow_tab.setColor(QColor(0, 0, 0, 60))
+            shadow_tab.setOffset(-2, 0)
+            self.tab_panel.setGraphicsEffect(shadow_tab)
+
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if isinstance(tab, BrowserTab):
+                tab.apply_perf_mode(mode)
+                if "cysra_home.html" in tab.view.url().toString():
+                    tab._push_home_data()
 
     def _shortcuts(self):
         for seq, fn in [
@@ -2298,37 +2407,45 @@ class MainWindow(QMainWindow):
 
     def _current_tab(self):
         idx = self.tabs.currentIndex()
-        if idx < 0: return None
+        if idx < 0:
+            return None
         t = self.tabs.widget(idx)
         return t if isinstance(t, BrowserTab) else None
 
     def _focus_address(self):
         t = self._current_tab()
-        if t: t.focus_address()
+        if t:
+            t.focus_address()
 
     def _reload(self):
         t = self._current_tab()
-        if t: t.view.reload()
+        if t:
+            t.view.reload()
 
     def _view_source(self):
         t = self._current_tab()
-        if t: t._view_source()
+        if t:
+            t._view_source()
 
     def _go_home(self):
         t = self._current_tab()
-        if t: t.load_home()
+        if t:
+            t.load_home()
 
     def _view_action(self, action):
         t = self._current_tab()
-        if t: getattr(t.view, action)()
+        if t:
+            getattr(t.view, action)()
 
     def _toggle_favorite(self):
         t = self._current_tab()
-        if t: t._toggle_favorite()
+        if t:
+            t._toggle_favorite()
 
     def _navigate_current(self, url):
         t = self._current_tab()
-        if t: t.navigate(url)
+        if t:
+            t.navigate(url)
         else:
             new_tab = self.add_tab()
             QTimer.singleShot(100, lambda: new_tab.navigate(url))
@@ -2342,6 +2459,21 @@ if __name__ == "__main__":
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps,    True)
 
+    perf_mode = "medium"
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+                perf_mode = data.get("perf_mode", "medium")
+    except Exception:
+        pass
+
+    if perf_mode == "lowest":
+        os.environ["QTWEBENGINE_DISABLE_GPU"] = "1"
+        sys.argv.append("--disable-gpu")
+        sys.argv.append("--disable-software-rasterizer")
+    else:
+        os.environ.pop("QTWEBENGINE_DISABLE_GPU", None)
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
