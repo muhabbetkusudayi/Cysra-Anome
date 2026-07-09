@@ -16,7 +16,7 @@
 
 ## About Developing
 
-I haven't been working on this project for a while you could say I took a break :) but I promise that version 7.3 will be released very soon. (bird promise)
+I haven't been working on this project for a while you could say **I took a break :)** but I promise that **version 7.3** will be released very soon. **(bird promise)**
 
 ---
 
